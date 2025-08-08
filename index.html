@@ -1,1 +1,96 @@
 <!-- HTML from the textdoc (shortened for brevity) -->
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SIRET Enricher (INSEE)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 1rem; max-width: 860px; }
+    label { display:block; margin-top: .8rem; font-weight:600; }
+    select, input[type=file], button { margin-top: .4rem; padding: .6rem .8rem; }
+    .hidden{ display:none; }
+    progress{ width:100%; height: 18px; }
+  </style>
+</head>
+<body>
+  <h1>SIRET Enricher (INSEE)</h1>
+  <p>Charge un CSV, choisis la colonne SIRET, puis lance l'enrichissement. Tu peux fermer l'onglet, le traitement continue côté serveur.</p>
+
+  <div class="card">
+    <h2>1) Import CSV</h2>
+    <input id="file" type="file" accept=".csv" />
+    <div id="mapping" class="hidden">
+      <label for="col">Colonne SIRET</label>
+      <select id="col"></select>
+      <button id="upload">Uploader & Lancer</button>
+    </div>
+    <div id="job" class="hidden">
+      <p>Job ID : <code id="jobid"></code></p>
+      <p>Statut : <span id="status">-</span></p>
+      <progress id="prog" max="100" value="0"></progress>
+      <div id="download" class="hidden">
+        <a id="dl" download>⬇️ Télécharger le CSV enrichi</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  let parsed = null;
+  const fileEl = document.getElementById('file');
+  const mapDiv = document.getElementById('mapping');
+  const colSel = document.getElementById('col');
+  const uploadBtn = document.getElementById('upload');
+  const jobDiv = document.getElementById('job');
+  const jobIdEl = document.getElementById('jobid');
+  const statusEl = document.getElementById('status');
+  const progEl = document.getElementById('prog');
+  const dlWrap = document.getElementById('download');
+  const dl = document.getElementById('dl');
+
+  fileEl.addEventListener('change', async () => {
+    const file = fileEl.files[0];
+    if (!file) return;
+    const text = await file.text();
+    const firstLine = text.split(/\\r?\\n/)[0];
+    const headers = firstLine.split(',').map(h => h.trim());
+    colSel.innerHTML = headers.map((h,i)=>`<option value="${i}">${h || 'Col '+(i+1)}</option>`).join('');
+    mapDiv.classList.remove('hidden');
+    parsed = { file, headers };
+  });
+
+  uploadBtn.addEventListener('click', async () => {
+    if (!parsed) return;
+    const siretIndex = parseInt(colSel.value,10);
+    const fd = new FormData();
+    fd.append('file', parsed.file);
+    fd.append('siretIndex', String(siretIndex));
+
+    const res = await fetch('/api/upload', { method:'POST', body: fd });
+    if (!res.ok) { alert('Upload échoué'); return; }
+    const data = await res.json();
+    jobDiv.classList.remove('hidden');
+    jobIdEl.textContent = data.job_id;
+    poll(data.job_id);
+  });
+
+  async function poll(jobId){
+    const iv = setInterval(async ()=>{
+      const r = await fetch(`/api/status?job=${encodeURIComponent(jobId)}`);
+      if(!r.ok) return;
+      const j = await r.json();
+      statusEl.textContent = j.status;
+      const pct = j.total_rows ? Math.round(100 * j.done_rows / j.total_rows) : 0;
+      progEl.value = pct;
+      if (j.status === 'done') {
+        clearInterval(iv);
+        dl.href = `/api/download?job=${encodeURIComponent(jobId)}`;
+        dlWrap.classList.remove('hidden');
+      }
+      if (j.status === 'error') clearInterval(iv);
+    }, 3000);
+  }
+  </script>
+</body>
+</html>

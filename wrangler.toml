@@ -2,12 +2,10 @@ name = "siret-enricher"
 main = "worker.mjs"
 compatibility_date = "2025-07-01"
 
-[vars]
-
 [[d1_databases]]
-binding = "DB"
-database_name = "siret_enricher"
-database_id = ""
+binding = "DB"                       # DOIT s’appeler DB (comme dans le code)
+database_name = "siret_enricher"     # ton nom de DB
+database_id = "cf0822b1-dc2f-4cf6-8b82-6770067a18e4"  # <= colle le tien ici
 
 [triggers]
 crons = ["*/2 * * * *"]
